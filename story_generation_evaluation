@@ -1,0 +1,164 @@
+## Story Generation and Evaluation (Reproducibility Checklist)
+
+This section documents the story generation and evaluation setup used in the paper. The goal is to make the experimental pipeline transparent and directly replicable.
+
+### A. Environment
+
+- Hardware: MacBook Air (Apple M3)
+- Runtime: Ollama (local inference)
+- Python: REPLACE_ME (e.g., 3.10/3.11)
+- Key libraries:
+  - transformers (for Flan-T5 restoration; cite: Flan-T5/JMLR)
+  - sentencepiece (cite: SentencePiece)
+  - beautifulsoup4 (infobox parsing)
+  - openai (for GPT-4o infobox linearization; cite: OpenAI model card / paper ref)
+  - evaluation libs (cite: ROUGE, BLEU, BERTScore, chrF, BARTScore)
+
+Checklist:
+- [ ] Save environment metadata:
+  - [ ] `ollama --version` → `outputs/env/ollama_version.txt`
+  - [ ] `python --version` → `outputs/env/python_version.txt`
+  - [ ] `pip freeze` / `conda env export` → `outputs/env/requirements.txt`
+  - [ ] macOS version (`sw_vers`) → `outputs/env/macos_version.txt`
+
+### B. Models (Pinned Artifacts)
+
+We run story generation with two instruction-tuned open-weight LLMs:
+- Baseline: Llama-3.1-Tulu-3-8B (cite: Tulu3)
+- Comparator: Gemma-2-9b-it (cite: Gemma2)
+
+Checklist:
+- [ ] Record exact Ollama model identifiers:
+  - [ ] `ollama list` → `outputs/env/ollama_list.txt`
+  - [ ] `ollama show <MODEL_TAG>` → `outputs/env/<MODEL_TAG>_show.txt`
+- [ ] Keep model tags fixed across runs (do not silently upgrade).
+
+### C. Input Variants (Dataset Columns)
+
+Story prompts are constructed from the following dataset fields:
+- `history_section` (reference/target text for automatic evaluation)
+- `history_excerpt_40` (partial context; first 40% of sentences)
+- `info_box` (linearized infobox paragraph produced by GPT-4o)
+- `infobox` (raw structured key–value metadata; used to produce `info_box`)
+
+Input settings used in experiments:
+- IB: `info_box`
+- HE: `history_excerpt_40`
+- HE+IB: concatenation of `history_excerpt_40` and `info_box`
+
+Checklist:
+- [ ] Ensure the dataset file name and schema are unchanged:
+  - [ ] `anatolia_ancient_sites.csv` committed
+  - [ ] Column names match exactly
+  - [ ] Wikipedia retrieval date is documented (e.g., 2025-07-04)
+
+### D. Prompting Conditions
+
+We evaluate:
+- Prompting: Zero-shot vs Few-shot (5-shot)
+- Tones (exact strings used in prompts):
+  - Academic: `plain academic`
+  - Narrative: `engaging and simple narrative`
+  - Descriptive: `visualizable descriptive style`
+  - Museum-guide: `museum-guide style`
+
+Few-shot exemplars:
+- Fixed set of five exemplars: Ephesus, Priene, Termessos, Alacahoyuk, Gordion
+- Exemplars are isolated from the test set used for reporting.
+
+Checklist:
+- [ ] Store all prompt templates under `prompts/`:
+  - [ ] `prompts/prompt_template.txt` (system role + instructions)
+  - [ ] `prompts/tone_modifiers.json` (tone → modifier string)
+  - [ ] `prompts/fewshot_examples.json` (the 5 exemplars)
+- [ ] Ensure few-shot examples are fixed (no random sampling at runtime).
+
+### E. Generation Parameters (Ollama)
+
+All story generations are executed locally via Ollama.
+
+- We use Ollama’s default generation parameters as the baseline configuration.
+- Prompt length varies by input setting and by few-shot vs zero-shot.
+
+Checklist:
+- [ ] Log generation configuration per run:
+  - model tag
+  - input mode (IB / HE / HE+IB)
+  - tone
+  - prompting type (zero-shot / 5-shot)
+  - any overridden decoding options (if none, explicitly log "defaults")
+- [ ] Save all raw generations (JSON/JSONL) under `outputs/generations/`
+
+Note:
+- If decoding uses sampling (non-zero temperature), repeated runs may yield minor variation.
+  For exact replication of reported tables, use the provided `outputs/generations/` artifacts.
+
+### F. Runtime / Latency Measurement (Local Feasibility)
+
+We report wall-clock inference time measured on-device.
+- Example baseline measurement (Tulu):
+  - zero-shot: 42.1 s
+  - 5-shot: 85.3 s
+
+Checklist:
+- [ ] Define timing method (e.g., `time.time()` around the call)
+- [ ] Save raw timing logs → `outputs/timings/*.csv`
+
+### G. Automatic Evaluation Metrics
+
+We report:
+- Baselines: ROUGE-L (cite: ROUGE), BLEU (cite: BLEU)
+- Main metrics: BERTScore (F1) (cite: BERTScore), chrF (cite: chrF), BARTScore (cite: BARTScore)
+
+Checklist:
+- [ ] Save metric configs and versions:
+  - tokenization settings / smoothing (if applicable)
+  - BERTScore model used (e.g., RoBERTa-Large, etc.) if configured
+  - BARTScore checkpoint and scoring settings
+- [ ] Save per-sample metric outputs → `outputs/metrics/per_sample.csv`
+- [ ] Save aggregated tables (mean over sites) → `outputs/metrics/summary_tables.csv`
+
+### H. QA-Based Factuality Evaluation and Statistical Tests
+
+We complement surface-form metrics with a QA-based factuality pipeline:
+- For each evaluated sample, generate K = 3 questions from the reference text.
+- Verify whether model answers are supported by the reference ("supported/unsupported").
+- Sample-level factuality is the mean of K binary judgments (range [0,1]).
+
+Checklist:
+- [ ] Save full QA traces per sample:
+  - questions, story answers, reference answers, decisions
+  → `outputs/factuality/factuality_traces.jsonl`
+- [ ] Save factuality scores per sample → `outputs/factuality/factuality_scores.csv`
+
+Statistical testing:
+- We use paired comparisons when the same sites are evaluated under two conditions.
+- Report p-values from paired tests (e.g., paired t-test) and optionally a non-parametric robustness check.
+- Do not hardcode p-values in code; compute them from the saved score files.
+
+Checklist:
+- [ ] Save statistical test outputs → `outputs/stats/factuality_tests.csv`
+- [ ] Record the exact pairing rule used (e.g., same city; same prompt_type).
+
+
+### I. Minimal “Run Order” Summary
+
+1. Dataset is already provided: `anatolia_ancient_sites.csv`
+2. (Optional) Re-run preprocessing:
+   - history restoration (SentencePiece + Flan-T5; cite: SentencePiece, Flan-T5, CoEdIT)
+   - infobox parsing + GPT-4o linearization (cite: GPT-4o/OpenAI)
+3. Generate stories via Ollama for all combinations:
+   - input modes: IB / HE / HE+IB
+   - tones: Academic / Narrative / Descriptive / Museum-guide
+   - prompting: zero-shot / 5-shot
+4. Compute automatic metrics and export summary tables.
+5. Run QA-based factuality evaluation and paired statistical tests.
+
+### J. Public Artifacts
+
+For transparency, the repository provides:
+- The curated dataset CSV
+- All prompt templates and the fixed 5-shot exemplars
+- Raw generation outputs and logs (if included)
+- Evaluation outputs (per-sample and aggregated)
+- Statistical test result files
