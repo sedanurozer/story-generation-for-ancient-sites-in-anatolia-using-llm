@@ -1,0 +1,111 @@
+# Anatolia Ancient Sites Dataset
+
+**A comprehensive dataset of ancient Anatolian sites for LLM-based storytelling and automated narrative generation research.**
+
+This repository contains the dataset used in the study regarding automated storytelling agents. It includes historical narratives, structured metadata, and specific text variants (summarized/truncated) for **N=89** ancient sites in Anatolia.
+
+## 📂 Dataset Contents
+
+The main file `anatolia_ancient_sites.csv` contains the following columns:
+
+| Column Name | Description | Source / Method |
+| :--- | :--- | :--- |
+| **`City`** | Name of the ancient site. | Wikipedia Title |
+| **`history_section`** | The raw, cleaned historical text extracted from the source. | Wikipedia API + Regex Cleaning |
+| **`history_excerpt_40`** | The first 40% of the sentences from the history section (used to test partial context). | Truncation Logic |
+| **`infobox`** | Structured Key-Value data extracted from the HTML infobox. | BeautifulSoup Parsing |
+| **`info_box`** | A coherent, human-readable paragraph generated from the structured infobox data. | LLM Transformation (Zero-shot) |
+
+---
+
+## 🛠 Dataset Construction Pipeline
+
+To ensure reproducibility, we detail the step-by-step methodology used to construct this dataset below.
+
+### 1. Data Acquisition & Filtering
+The data collection process was carried out through a limited number of HTTP requests via the Wikipedia API and direct page access. All retrievals were performed with specific time delays (1.5s) to respect access policies.
+
+* **Dynamic Content Extraction:** Since page structures vary, a parser iterates through headings to identify relevant sections (keywords: *"History", "Ancient history", "Background"*).
+* **Availability:** History sections were available for 100% of sites. Valid infoboxes were retrieved for ~58% (52/89) of sites.
+
+### 2. Preprocessing Logic
+
+#### 2.1. Text Cleaning & Truncation (`history_section`)
+Raw text underwent regex-based cleaning to remove citations (e.g., `[1]`, `[citation needed]`), non-Latin artifacts, and HTML tags.
+
+* **Truncation Logic (`history_given_40`):**
+    To experiment with partial historical input, we applied a sentence-based split logic:
+    1.  Tokenize the full cleaned text into sentences.
+    2.  Calculate the split index: $Index = \lceil Total Sentences \times 0.40 \rceil$.
+    3.  Extract only the first 40% of sentences.
+
+#### 2.2. Infobox Parsing & Linearization
+The raw HTML infoboxes required a two-step transformation:
+
+* **Step A: Structural Parsing (Rule-Based):** HTML tables were parsed into a dictionary format (Key-Value) to preserve structural hierarchy (e.g., *Location > Coordinates*) using `BeautifulSoup`.
+* **Step B: Semantic Linearization (LLM-Based):** The structured dictionary was converted into a coherent, human-readable paragraph using **GPT-4o**. To ensure the narrative remained strictly historical, we used a constrained prompt that explicitly filtered out modern administrative data.
+
+    > **Infobox Linearization Prompt:**
+    > "You are given a structured list of historical facts (info_box) about the ancient city of {city}. Please transform the structured facts below into a fluent, human-readable paragraph.
+    > - Do NOT add any new content.
+    > - Do NOT include speculative or legendary claims.
+    > - Include only facts relevant to the historical, cultural, or archaeological description.
+    > - Exclude purely modern or technical fields: GPS coordinates, website links, visitor/public access info.
+    > - Output exactly ONE single paragraph of fluent English prose."
+
+### 3. Text Restoration (Corrupted Text Fix)
+To address formatting corruptions (e.g., merged words like *"Constantinopleinlate"*), we implemented a two-stage restoration pipeline inspired by CoEdit [3]:
+
+#### Stage A: Subword Segmentation (SentencePiece)
+Standard tokenizers often treat merged words as "unknown" tokens. We used **SentencePiece** [1] to force a granular breakdown.
+* **Algorithm:** Unigram Language Model.
+* **Vocab Size:** 1,000 (Set low to enforce high granularity).
+* **Output:** Converts merged strings into space-separated subwords.
+
+#### Stage B: Instruction-Based Reconstruction (Flan-T5)
+The segmented text was passed to **Flan-T5 (Base)** [2] using a few-shot prompting strategy. We provided 5 pairs of (Corrupted -> Clean) examples before the target input.
+
+> **Restoration Prompt Structure:**
+> "Instruction: Split wrongly joined words and fix spacing issues in the text. Preserve all original information.
+>
+> Example 1:
+> Input: Byzan tium wasan ancient...
+> Output: Byzantium was an ancient...
+>
+> [... 4 more examples ...]
+>
+> Current Task:
+> Input: {segmented_target_text}
+> Output:"
+
+---
+
+## 4. Experimental Settings & Configurations
+
+To ensure full reproducibility, we provide the exact configurations used in the pipeline.
+
+**A. Infobox Linearization (LLM Settings)**
+* **Model:** GPT-4o (OpenAI)
+* **Temperature:** 0.2 (High determinism to prevent hallucinations)
+* **System Prompt:** "You are a careful text rewriting assistant."
+* **Constraints:** Strict exclusion of modern administrative data (GPS, Zip codes).
+
+**B. Text Restoration (Flan-T5 Base)**
+* **Model Checkpoint:** `google/flan-t5-base`
+* **Inference Parameters:**
+    * `max_new_tokens`: 256
+    * `do_sample`: False (Greedy Decoding)
+* **Prompt Strategy:** Few-Shot (5 examples)
+
+**C. Tokenizer (SentencePiece)**
+* **Library:** `sentencepiece`
+* **Model Type:** Unigram
+* **Vocab Size:** 1,000
+
+## References
+
+1. Kudo, T., Richardson, J.: SentencePiece: A simple and language independent subword tokenizer and detokenizer for neural text processing. In: Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing: System Demonstrations, pp. 66–71. Association for Computational Linguistics, Brussels (2018). https://doi.org/10.18653/v1/D18-2012
+
+2. Chung, H.W., Hou, L., Longpre, S., Zoph, B., Tai, Y., Fedus, W., Li, Y., Wang, X., Dehghani, M., Brahma, S., Webson, A., Gu, S.S., Dai, Z., Suzgun, M., Chen, X., Chowdhery, A., Castro-Ros, A., Pellat, M., Robinson, K., Valter, D., Narang, S., Mishra, G., Yu, A., Zhao, V., Huang, Y., Dai, A., Yu, H., Petrov, S., Chi, E.H., Dean, J., Devlin, J., Roberts, A., Zhou, D., Le, Q.V., Wei, J.: Scaling instruction-finetuned language models. J. Mach. Learn. Res. 25(1), Article 70, 1–53 (2024).
+
+3. Raheja, V., Kumar, D., Koo, R., Kang, D.: CoEdIT: Text editing by task-specific instruction tuning. In: Findings of the Association for Computational Linguistics: EMNLP 2023, pp. 5274–5291. Association for Computational Linguistics, Singapore (2023). https://doi.org/10.18653/v1/2023.findings-emnlp.350
