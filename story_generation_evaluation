@@ -118,7 +118,7 @@ Checklist:
 - [ ] Save per-sample metric outputs → `outputs/metrics/per_sample.csv`
 - [ ] Save aggregated tables (mean over sites) → `outputs/metrics/summary_tables.csv`
 
-### H. QA-Based Factuality Evaluation and Statistical Tests
+### H. QA-Based Factuality Evaluation and Statistical Tests [1]
 
 We complement surface-form metrics with a QA-based factuality pipeline:
 - For each evaluated sample, generate K = 3 questions from the reference text.
@@ -162,3 +162,6 @@ For transparency, the repository provides:
 - Raw generation outputs and logs (if included)
 - Evaluation outputs (per-sample and aggregated)
 - Statistical test result files
+
+
+[1] 31.	Ushio, A., Alva-Manchego, F., Camacho-Collados, J.: An empirical comparison of LM-based question and answer generation methods. In: Rogers, A., Boyd-Graber, J., Okazaki, N. (eds.) Findings of the Association for Computational Linguistics: ACL 2023, pp. 14262–14272. Association for Computational Linguistics, Toronto (2023). https://doi.org/10.18653/v1/2023.findings-acl.899
